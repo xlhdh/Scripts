@@ -550,7 +550,7 @@
 
   class F4F
     {
-      var $audio, $auth, $baseFilename, $baseTS, $baseUrl, $bootstrapUrl, $debug, $decoderTest, $duration, $fileCount, $filesize, $fixWindow;
+      var $audio, $auth, $baseFilename, $baseTS, $baseUrl, $bootstrapUrl, $debug, $decoderTest, $duration, $nfrags, $fileCount, $filesize, $fixWindow;
       var $format, $live, $media, $metadata, $outDir, $outFile, $parallel, $play, $processed, $quality, $rename, $sessionID, $srt, $video;
       var $prevTagSize, $tagHeaderLen;
       var $segTable, $fragTable, $frags, $fragCount, $lastFrag, $fragUrl, $discontinuity;
@@ -593,6 +593,7 @@
         {
           $this->audio             = false;
           $this->duration          = 0;
+          $this->nfrags          = 0;
           $this->filesize          = 0;
           $this->video             = false;
           $this->prevTagSize       = 4;
@@ -1556,6 +1557,7 @@
               $fragPos += $totalTagLen;
             }
           $this->duration = round($packetTS / 1000, 0);
+          $this->nfrags += 1;
           if ($flvWrite and is_resource($flvFile))
             {
               $this->filesize = ftell($flvFile) / (1024 * 1024);
@@ -1635,10 +1637,17 @@
                   break;
 
               $recDuration = $opt['duration'] + $this->duration;
+              $recFrags = $opt['nfrags'] + $this->nfrags;
               if ($opt['tDuration'] and ($recDuration >= $opt['tDuration']))
                 {
                   LogInfo("");
                   LogInfo($recDuration . " seconds of content has been recorded successfully.");
+                  return STOP_PROCESSING;
+                }
+              if ($opt['tFrags'] and ($recFrags >= $opt['tFrags']))
+                {
+                  LogInfo("");
+                  LogInfo($recFrags . " fragment(s) have been recorded successfully.");
                   return STOP_PROCESSING;
                 }
               if ($opt['filesize'] and ($this->filesize >= $opt['filesize']))
@@ -2042,6 +2051,7 @@
   $baseFilename = "";
   $debug        = false;
   $duration     = 0;
+  $nfrags     = 0;
   $delete       = false;
   $fileCount    = 1;
   $fileExt      = ".f4f";
@@ -2079,6 +2089,7 @@
           'adkey' => 'akamai session decryption key',
           'auth' => 'authentication string for fragment requests',
           'duration' => 'stop recording after specified number of seconds',
+          'nfrags' => 'stop after specified number of fragments',
           'filesize' => 'split output file in chunks of specified size (MB)',
           'fragments' => 'base filename for fragments',
           'fixwindow' => 'timestamp gap between frames to consider as timeshift',
@@ -2148,6 +2159,8 @@
       $f4f->auth = '?' . $cli->getParam('auth');
   if ($cli->getParam('duration'))
       $duration = $cli->getParam('duration');
+  if ($cli->getParam('nfrags'))
+      $nfrags = $cli->getParam('nfrags');
   if ($cli->getParam('filesize'))
       $filesize = $cli->getParam('filesize');
   if ($cli->getParam('fixwindow'))
@@ -2225,7 +2238,7 @@
       $filesize = 0;
 
   // Disable metadata if it invalidates the stream duration
-  if ($start or $duration or $filesize)
+  if ($start or $duration or $nfrags or $filesize)
       $metadata = false;
 
   // Set f4f options
@@ -2243,8 +2256,10 @@
       'ad' => $ad,
       'cc' => $cc,
       'duration' => 0,
+      'nfrags' => 0,
       'filesize' => $filesize,
       'start' => $start,
+      'tFrags' => $nfrags,
       'tDuration' => $duration
   );
   if ($manifest)
